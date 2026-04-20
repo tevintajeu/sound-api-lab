@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hydraulic Leak Audio</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+        }
+        .audio-player {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 420px;
+        }
+        h2 {
+            margin-top: 0;
+            text-align: center;
+            color: #333;
+            font-size: 1.2rem;
+        }
+        .progress-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 20px 0;
+            font-size: 0.85rem;
+            color: #555;
+        }
+        input[type="range"] {
+            flex-grow: 1;
+            cursor: pointer;
+        }
+        
+        /* Wavy Snake Slider */
+        input[type="range"].snake-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 30px;
+            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 30"><path d="M 0 15 Q 12.5 0, 25 15 T 50 15" fill="none" stroke="%2328a745" stroke-width="4" stroke-linecap="round"/></svg>') repeat-x;
+            background-size: 50px 30px;
+            outline: none;
+            border-radius: 15px;
+            background-color: #e9ecef;
+        }
+        input[type="range"].snake-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 24px;
+            height: 24px;
+            background: #d9534f;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+            border: 2px solid white;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        button {
+            cursor: pointer;
+            padding: 10px 16px;
+            border: none;
+            background: #007bff;
+            color: white;
+            border-radius: 6px;
+            font-weight: bold;
+            transition: background 0.2s, transform 0.1s;
+        }
+        button:hover { background: #0056b3; }
+        button:active { transform: scale(0.95); }
+        button.active-toggle { background: #28a745; }
+        
+        #btn-pump {
+            background: #d9534f;
+            font-size: 1.1rem;
+            padding: 12px 20px;
+            width: 100%;
+            margin-top: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        #btn-pump:hover { background: #c9302c; }
+        #btn-pump:disabled {
+            background: #777;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+            padding-top: 15px;
+            border-top: 1px solid #eee;
+        }
+        .setting-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        .setting-row label {
+            font-size: 0.9rem;
+            color: #333;
+            width: 80px;
+            flex-shrink: 0;
+        }
+        
+        .burst-overlay {
+            animation: shake 0.5s infinite;
+            border: 2px solid red !important;
+        }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="audio-player" id="player-container">
+        <h2>Hydraulic Leak Audio</h2>
+        
+        <audio id="main-audio" src="music.mp3" preload="metadata"></audio>
+
+        <div class="progress-container">
+            <span id="current-time">0:00</span>
+            <input type="range" id="seek-slider" value="0" max="100">
+            <span id="duration">0:00</span>
+        </div>
+
+        <div class="controls">
+            <button id="btn-rewind">-10s</button>
+            <button id="btn-play-pause">Play</button>
+            <button id="btn-forward">+10s</button>
+            <button id="btn-loop">Loop: OFF</button>
+        </div>
+
+        <div class="settings-grid">
+            <div class="setting-row">
+                <label for="speed-slider">Speed</label>
+                <input type="range" id="speed-slider" min="0.5" max="2.0" step="0.25" value="1">
+                <span id="speed-display" style="width: 40px; font-size: 0.85rem;">1.0x</span>
+            </div>
+
+            <div class="setting-row" style="flex-direction: column; align-items: stretch; margin-top: 10px;">
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <label for="volume-slider">Volume Pipe</label>
+                    <span id="volume-display" style="font-size: 0.85rem; font-weight: bold; color: #d9534f;">70%</span>
+                </div>
+                <input type="range" id="volume-slider" class="snake-slider" min="0" max="110" value="70">
+                <button id="btn-pump">Pump (Click Rapidly!)</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const audio = document.getElementById('main-audio');
+        const playPauseBtn = document.getElementById('btn-play-pause');
+        const rewindBtn = document.getElementById('btn-rewind');
+        const forwardBtn = document.getElementById('btn-forward');
+        const loopBtn = document.getElementById('btn-loop');
+        const seekSlider = document.getElementById('seek-slider');
+        const speedSlider = document.getElementById('speed-slider');
+        const volumeSlider = document.getElementById('volume-slider');
+        const pumpBtn = document.getElementById('btn-pump');
+        
+        const currentTimeDisplay = document.getElementById('current-time');
+        const durationDisplay = document.getElementById('duration');
+        const speedDisplay = document.getElementById('speed-display');
+        const volumeDisplay = document.getElementById('volume-display');
+        const playerContainer = document.getElementById('player-container');
+
+        let audioCtx, track, gainNode, waveShaper;
+        let isPlaying = false;
+        let isBursting = false;
+        let currentVolume = 70;
+
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            track = audioCtx.createMediaElementSource(audio);
+            
+            waveShaper = audioCtx.createWaveShaper();
+            gainNode = audioCtx.createGain();
+            
+            track.connect(waveShaper);
+            waveShaper.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            updateVolumeUI(currentVolume);
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds)) return "0:00";
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+        }
+
+        function makeDistortionCurve(amount) {
+            let k = typeof amount === 'number' ? amount : 50,
+                n_samples = 44100,
+                curve = new Float32Array(n_samples),
+                deg = Math.PI / 180,
+                i = 0, x;
+            for ( ; i < n_samples; ++i ) {
+                x = i * 2 / n_samples - 1;
+                curve[i] = ( 3 + k ) * x * 20 * deg / ( Math.PI + k * Math.abs(x) );
+            }
+            return curve;
+        }
+
+        function updateVolumeUI(val) {
+            currentVolume = Math.max(0, Math.min(val, 110));
+            volumeSlider.value = currentVolume;
+            volumeDisplay.textContent = `${Math.floor(currentVolume)}%`;
+            
+            if (gainNode) {
+                gainNode.gain.value = currentVolume / 100;
+            }
+        }
+
+        function triggerBurst() {
+            if (isBursting) return;
+            isBursting = true;
+            
+            updateVolumeUI(110);
+            waveShaper.curve = makeDistortionCurve(400);
+            playerContainer.classList.add('burst-overlay');
+            pumpBtn.textContent = "PIPE BURST!";
+            pumpBtn.disabled = true;
+
+            setTimeout(() => {
+                waveShaper.curve = null;
+                updateVolumeUI(0);
+                playerContainer.classList.remove('burst-overlay');
+                pumpBtn.textContent = "RESETTING... (0%)";
+                
+                setTimeout(() => {
+                    isBursting = false;
+                    pumpBtn.textContent = "Pump (Click Rapidly!)";
+                    pumpBtn.disabled = false;
+                }, 5000);
+                
+            }, 1500);
+        }
+
+        // Only leak if the song is actively playing
+        setInterval(() => {
+            if (isBursting || !isPlaying) return;
+            if (currentVolume > 0) {
+                updateVolumeUI(currentVolume - 1);
+            }
+        }, 1000);
+
+        pumpBtn.addEventListener('click', () => {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            if (isBursting) return;
+
+            updateVolumeUI(currentVolume + 8);
+            
+            if (currentVolume >= 105) {
+                triggerBurst();
+            }
+        });
+
+        volumeSlider.addEventListener('input', (e) => {
+            initAudio();
+            if (isBursting) {
+                e.preventDefault();
+                volumeSlider.value = 0;
+                return;
+            }
+            updateVolumeUI(Number(e.target.value));
+            if (currentVolume >= 105) {
+                triggerBurst();
+            }
+        });
+
+        playPauseBtn.addEventListener('click', () => {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+
+            if (audio.paused) {
+                audio.play();
+                isPlaying = true;
+                playPauseBtn.textContent = 'Pause';
+            } else {
+                audio.pause();
+                isPlaying = false;
+                playPauseBtn.textContent = 'Play';
+            }
+        });
+
+        audio.addEventListener('loadedmetadata', () => {
+            seekSlider.max = Math.floor(audio.duration);
+            durationDisplay.textContent = formatTime(audio.duration);
+        });
+
+        audio.addEventListener('timeupdate', () => {
+            seekSlider.value = Math.floor(audio.currentTime);
+            currentTimeDisplay.textContent = formatTime(audio.currentTime);
+        });
+
+        seekSlider.addEventListener('input', () => {
+            audio.currentTime = seekSlider.value;
+        });
+
+        rewindBtn.addEventListener('click', () => {
+            audio.currentTime = Math.max(0, audio.currentTime - 10);
+        });
+
+        forwardBtn.addEventListener('click', () => {
+            audio.currentTime = Math.min(audio.duration, audio.currentTime + 10);
+        });
+
+        speedSlider.addEventListener('input', () => {
+            audio.playbackRate = speedSlider.value;
+            speedDisplay.textContent = `${Number(speedSlider.value).toFixed(1)}x`;
+        });
+
+        loopBtn.addEventListener('click', () => {
+            audio.loop = !audio.loop;
+            loopBtn.textContent = audio.loop ? 'Loop: ON' : 'Loop: OFF';
+            loopBtn.classList.toggle('active-toggle', audio.loop);
+        });
+
+        audio.addEventListener('ended', () => {
+            if (!audio.loop) {
+                isPlaying = false;
+                playPauseBtn.textContent = 'Play';
+                audio.currentTime = 0;
+            }
+        });
+    </script>
+</body>
+</html>
