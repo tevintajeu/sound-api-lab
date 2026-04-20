@@ -1,0 +1,964 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hydraulic Leak — Audio Player</title>
+  <style>
+    /* ── Reset & Base ──────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0d0d12;
+      --surf:    #16161e;
+      --surf2:   #1f1f2a;
+      --border:  #2a2a38;
+      --text:    #e6e6f0;
+      --muted:   #7a7a99;
+      --accent:  #4f8ef7;
+      --warn:    #f0a030;
+      --danger:  #e84040;
+      --ok:      #38c060;
+      --r:       10px;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 2rem 1rem 4rem;
+    }
+
+    #app {
+      width: 100%;
+      max-width: 560px;
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+    }
+
+    /* ── Typography helpers ────────────────────────────── */
+    .label {
+      font-size: 0.62rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin-bottom: 0.8rem;
+    }
+
+    /* ── Panels ────────────────────────────────────────── */
+    .panel {
+      background: var(--surf);
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      padding: 1.15rem 1.25rem;
+    }
+
+    /* ── Header ────────────────────────────────────────── */
+    #header {
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+      padding: 0.4rem 0 0.1rem;
+    }
+    #header h1    { font-size: 1.05rem; font-weight: 700; letter-spacing: 0.05em; }
+    #header .sub  { font-size: 0.75rem; color: var(--muted); font-weight: 400; }
+
+    /* ── Upload zone ───────────────────────────────────── */
+    #upload-zone {
+      border: 1px dashed var(--border);
+      border-radius: var(--r);
+      padding: 1.8rem;
+      text-align: center;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      color: var(--muted);
+      font-size: 0.85rem;
+      line-height: 1.6;
+    }
+    #upload-zone:hover, #upload-zone.drag-over {
+      background: var(--surf2);
+      border-color: var(--accent);
+      color: var(--text);
+    }
+    #upload-zone .icon { font-size: 1.8rem; margin-bottom: 0.4rem; }
+
+    /* ── Track info ────────────────────────────────────── */
+    #track-name  { font-size: 0.95rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 0.15rem; }
+    #track-state { font-size: 0.72rem; color: var(--muted); }
+
+    /* ── Seek / Progress ───────────────────────────────── */
+    .progress-row {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      margin-top: 0.9rem;
+    }
+    .time { font-size: 0.7rem; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 34px; }
+    .time.right { text-align: right; }
+
+    /* ── Range inputs ──────────────────────────────────── */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: var(--surf2);
+      outline: none;
+      cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--surf);
+      cursor: pointer;
+      transition: transform 0.1s;
+    }
+    input[type="range"]::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    input[type="range"]::-moz-range-thumb {
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--surf);
+      cursor: pointer;
+    }
+
+    /* ── Buttons ───────────────────────────────────────── */
+    button {
+      font-family: inherit;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      background: transparent;
+      color: var(--text);
+      transition: background 0.12s, transform 0.07s, border-color 0.12s;
+      font-size: 0.8rem;
+      padding: 0.45rem 0.9rem;
+    }
+    button:hover:not(:disabled) { background: var(--surf2); border-color: #444458; }
+    button:active:not(:disabled) { transform: scale(0.96); }
+    button:disabled { opacity: 0.35; cursor: not-allowed; }
+    button.active { background: rgba(79,142,247,0.15); border-color: var(--accent); color: var(--accent); }
+
+    #play-btn {
+      width: 44px; height: 44px;
+      border-radius: 50%; padding: 0; font-size: 1rem;
+      display: flex; align-items: center; justify-content: center;
+      border-color: var(--accent); color: var(--accent);
+    }
+    #play-btn:hover:not(:disabled) { background: rgba(79,142,247,0.15); }
+
+    .controls-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      margin-top: 0.9rem;
+    }
+
+    /* ── Modifiers ─────────────────────────────────────── */
+    .mod-row {
+      display: flex; align-items: center;
+      gap: 1rem; margin-top: 0.85rem; flex-wrap: wrap;
+    }
+    .mod-group { display: flex; align-items: center; gap: 0.45rem; font-size: 0.78rem; color: var(--muted); }
+
+    select {
+      font-family: inherit; font-size: 0.78rem;
+      background: var(--surf2); color: var(--text);
+      border: 1px solid var(--border); border-radius: 6px;
+      padding: 0.3rem 0.55rem; cursor: pointer; outline: none;
+    }
+    select:hover { border-color: #444458; }
+
+    #mute-btn.muted { color: var(--danger); border-color: var(--danger); }
+
+    /* ── Hydraulic panel ───────────────────────────────── */
+    .hydraulic-header {
+      display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;
+    }
+    .pressure-badge {
+      font-size: 0.7rem; font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      padding: 0.15rem 0.55rem; border-radius: 99px;
+      border: 1px solid var(--border); background: var(--surf2);
+      color: var(--muted); transition: color 0.2s, border-color 0.2s;
+      min-width: 46px; text-align: center;
+    }
+
+    /* ── Pipe bar ──────────────────────────────────────── */
+    .pipe-track { height: 6px; border-radius: 3px; background: var(--surf2); overflow: hidden; margin-bottom: 0.85rem; }
+    #pipe-fill  { height: 100%; border-radius: 3px; background: var(--accent); transition: width 0.08s linear, background 0.2s; width: 0%; }
+
+    /* ── Wavy SVG volume slider ────────────────────────── */
+    #wave-container {
+      position: relative;
+      height: 64px;
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+      margin-bottom: 0.9rem;
+    }
+    #wave-svg { width: 100%; height: 100%; display: block; }
+    #wave-thumb {
+      position: absolute;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      border: 2px solid var(--surf);
+      box-shadow: 0 0 0 1px var(--accent);
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      transition: background 0.2s;
+      top: 50%; left: 0%;
+    }
+
+    /* ── Status bar ────────────────────────────────────── */
+    #status-bar {
+      font-size: 0.75rem; text-align: center;
+      padding: 0.5rem 0.8rem; border-radius: 7px;
+      background: var(--surf2); color: var(--muted);
+      transition: background 0.2s, color 0.2s;
+      margin-bottom: 0.85rem; line-height: 1.4;
+    }
+    #status-bar.ok     { background: rgba(56,192,96,0.12);  color: var(--ok);     }
+    #status-bar.warn   { background: rgba(240,160,48,0.12); color: var(--warn);   }
+    #status-bar.danger { background: rgba(232,64,64,0.14);  color: var(--danger); }
+
+    /* ── Pump button ───────────────────────────────────── */
+    #pump-btn {
+      width: 100%; padding: 1rem;
+      font-size: 1rem; font-weight: 700;
+      border-radius: var(--r); border-color: var(--border);
+      letter-spacing: 0.06em;
+      display: flex; flex-direction: column; align-items: center; gap: 0.25rem;
+    }
+    #pump-btn:hover:not(:disabled) { background: var(--surf2); border-color: var(--accent); }
+    #pump-sub { font-size: 0.65rem; font-weight: 400; color: var(--muted); letter-spacing: 0.02em; }
+    #pump-btn.pumped { background: rgba(79,142,247,0.12); border-color: var(--accent); }
+
+    /* ── Keyboard hint ─────────────────────────────────── */
+    .key-hint { font-size: 0.65rem; color: var(--muted); text-align: center; margin-top: 0.5rem; }
+    kbd { background: var(--surf2); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; font-family: monospace; font-size: 0.65rem; }
+
+    #file-input { display: none; }
+  </style>
+</head>
+<body>
+
+<div id="app">
+
+  <!-- Header -->
+  <div id="header">
+    <h1>&#128268; Hydraulic Leak</h1>
+    <span class="sub">Audio Player</span>
+  </div>
+
+  <!-- Upload panel -->
+  <div class="panel">
+    <div class="label">Audio source</div>
+    <div id="upload-zone">
+      <div class="icon">&#127925;</div>
+      <div>Drop an audio file here, or click to browse</div>
+      <div style="font-size:0.7rem;margin-top:0.3rem">MP3 &middot; WAV &middot; OGG &middot; FLAC &middot; AAC</div>
+    </div>
+    <input type="file" id="file-input" accept="audio/*" />
+    <!--
+      The <audio> element is hidden. Its output is routed through
+      the Web Audio API graph so we can manipulate it precisely.
+    -->
+    <audio id="audio-el"></audio>
+  </div>
+
+  <!-- Player panel (revealed after a file is loaded) -->
+  <div class="panel" id="player-panel" style="display:none">
+    <div class="label">Now playing</div>
+    <div id="track-name">&#8212;</div>
+    <div id="track-state">Ready</div>
+
+    <!-- Seek bar: current time / duration -->
+    <div class="progress-row">
+      <span class="time" id="cur-time">0:00</span>
+      <input type="range" id="seek-slider" min="0" max="100" value="0" step="0.1" />
+      <span class="time right" id="dur-time">0:00</span>
+    </div>
+
+    <!-- Playback controls -->
+    <div class="controls-row">
+      <button id="back-btn" title="Back 10 seconds">&#8592; 10s</button>
+      <button id="play-btn" disabled title="Play / Pause">&#9654;</button>
+      <button id="fwd-btn"  title="Forward 10 seconds">10s &#8594;</button>
+    </div>
+
+    <!-- Modifiers: speed, loop, mute -->
+    <div class="mod-row">
+      <div class="mod-group">
+        <label for="speed-select">Speed</label>
+        <select id="speed-select">
+          <option value="0.5">0.5&times;</option>
+          <option value="0.75">0.75&times;</option>
+          <option value="1" selected>1&times;</option>
+          <option value="1.25">1.25&times;</option>
+          <option value="1.5">1.5&times;</option>
+          <option value="2">2&times;</option>
+        </select>
+      </div>
+      <button id="loop-btn">&#8635; Loop</button>
+      <button id="mute-btn">&#128266; Mute</button>
+    </div>
+  </div>
+
+  <!-- Hydraulic pressure panel (revealed after a file is loaded) -->
+  <div class="panel" id="hydraulic-panel" style="display:none">
+
+    <div class="hydraulic-header">
+      <div class="label" style="margin-bottom:0">&#9881; Hydraulic pressure system</div>
+      <div class="pressure-badge" id="pressure-badge">0%</div>
+    </div>
+
+    <!-- Pipe fill bar (visual pressure meter) -->
+    <div class="pipe-track"><div id="pipe-fill"></div></div>
+
+    <!--
+      WAVY SVG VOLUME SLIDER
+      ======================
+      Path generated with Math.sin — FREQ full cycles across the width.
+      The grey path is the full track; the coloured path is clipped to
+      the current volume %. The thumb's Y position is computed from the
+      sine function at the current X %, so it rides the wave smoothly.
+      Drag or tap anywhere to set volume manually.
+    -->
+    <div id="wave-container" aria-label="Volume wave slider — drag to set pressure">
+      <svg id="wave-svg" viewBox="0 0 500 64" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <path id="wave-track" fill="none" stroke="#2a2a38"  stroke-width="2.5" />
+        <path id="wave-fill"  fill="none" stroke="#4f8ef7" stroke-width="2.5" stroke-linecap="round" />
+      </svg>
+      <div id="wave-thumb"></div>
+    </div>
+
+    <div id="status-bar">Load a file and press play to activate the hydraulic system.</div>
+
+    <button id="pump-btn" disabled>
+      <span>&#128295; PUMP</span>
+      <span id="pump-sub">Click rapidly to maintain pressure (+8% per pump)</span>
+    </button>
+
+    <div class="key-hint" style="margin-top:0.6rem">
+      <kbd>Space</kbd> play/pause &nbsp;&middot;&nbsp;
+      <kbd>P</kbd> pump &nbsp;&middot;&nbsp;
+      <kbd>&larr;</kbd><kbd>&rarr;</kbd> skip 10s &nbsp;&middot;&nbsp;
+      <kbd>M</kbd> mute
+    </div>
+
+  </div>
+
+</div><!-- /#app -->
+
+<script>
+/*
+ * ============================================================
+ *  HYDRAULIC LEAK — AUDIO PLAYER
+ *  Pure HTML5 + Vanilla JavaScript + Web Audio API
+ *  No external libraries or frameworks.
+ * ============================================================
+ *
+ *  Web Audio API graph:
+ *
+ *    HTMLAudioElement
+ *         |
+ *    MediaElementSourceNode  (srcNode)
+ *         |
+ *    GainNode                (gainNode)   ← controls volume precisely
+ *         |
+ *    WaveShaperNode          (shaperNode) ← distortion during burst
+ *         |
+ *    AudioContext.destination
+ *
+ *  Hydraulic mechanic:
+ *    - setInterval drains volume by 2% every 50 ms while playing.
+ *    - Each pump click injects +8%.
+ *    - Exceeding 105% triggers BURST:
+ *        1. Heavy distortion curve loaded into WaveShaperNode.
+ *        2. GainNode spiked to 110% for 1.5 s.
+ *        3. Volume crashes to 0%, pump locked for 5-second penalty.
+ */
+
+(function () {
+  'use strict';
+
+  /* ── DOM references ───────────────────────────────────── */
+  const audio          = document.getElementById('audio-el');
+  const fileInput      = document.getElementById('file-input');
+  const uploadZone     = document.getElementById('upload-zone');
+  const playerPanel    = document.getElementById('player-panel');
+  const hydraulicPanel = document.getElementById('hydraulic-panel');
+  const playBtn        = document.getElementById('play-btn');
+  const backBtn        = document.getElementById('back-btn');
+  const fwdBtn         = document.getElementById('fwd-btn');
+  const seekSlider     = document.getElementById('seek-slider');
+  const curTimeEl      = document.getElementById('cur-time');
+  const durTimeEl      = document.getElementById('dur-time');
+  const speedSelect    = document.getElementById('speed-select');
+  const loopBtn        = document.getElementById('loop-btn');
+  const muteBtn        = document.getElementById('mute-btn');
+  const trackName      = document.getElementById('track-name');
+  const trackState     = document.getElementById('track-state');
+  const pumpBtn        = document.getElementById('pump-btn');
+  const pressureBadge  = document.getElementById('pressure-badge');
+  const pipeFill       = document.getElementById('pipe-fill');
+  const statusBar      = document.getElementById('status-bar');
+  const waveContainer  = document.getElementById('wave-container');
+  const waveTrack      = document.getElementById('wave-track');
+  const waveFill       = document.getElementById('wave-fill');
+  const waveThumb      = document.getElementById('wave-thumb');
+
+  /* ── Web Audio API nodes (created on first play) ──────── */
+  let audioCtx   = null;   // AudioContext
+  let gainNode   = null;   // GainNode: precise volume control
+  let shaperNode = null;   // WaveShaperNode: distortion effect
+  let srcNode    = null;   // MediaElementSourceNode
+
+  /* ── Player state ─────────────────────────────────────── */
+  let volume       = 0.5;   // 0.0 – 1.1 (overpressure allowed up to 110%)
+  let isPlaying    = false;
+  let isMuted      = false;
+  let isBurst      = false; // true while burst animation runs
+  let isPenalty    = false; // true during 5-second pump lockout
+  let isSeeking    = false; // true while user drags seek slider
+  let isDraggingWave = false;
+  let leakInterval = null;  // handle from setInterval
+
+  /* ── Sine-wave geometry ────────────────────────────────── */
+  const SVG_W = 500;  // viewBox width
+  const SVG_H = 64;   // viewBox height
+  const CY    = 32;   // centre Y
+  const AMP   = 20;   // amplitude in pixels
+  const FREQ  = 2.2;  // number of complete sine cycles
+
+  /* ============================================================
+   *  WAVE SLIDER — path generation & rendering
+   * ============================================================ */
+
+  /**
+   * Returns the Y coordinate on the sine wave for a given
+   * normalised X value (0 = left edge, 1 = right edge).
+   *
+   * y = centreY - amplitude * sin(x * cycles * 2π)
+   */
+  function waveY(xNorm) {
+    return CY - AMP * Math.sin(xNorm * FREQ * Math.PI * 2);
+  }
+
+  /**
+   * Builds an SVG polyline path string for the wave from x=0
+   * to x=endNorm. 300 segments give a smooth curve.
+   */
+  function buildWavePath(endNorm) {
+    const STEPS = 300;
+    const limit = Math.round(endNorm * STEPS);
+    let d = '';
+    for (let i = 0; i <= limit; i++) {
+      const xn = i / STEPS;
+      const x  = (xn * SVG_W).toFixed(2);
+      const y  = waveY(xn).toFixed(2);
+      d += (i === 0 ? 'M' : 'L') + x + ' ' + y;
+    }
+    return d;
+  }
+
+  // Draw the full grey background track once on startup
+  waveTrack.setAttribute('d', buildWavePath(1));
+
+  /**
+   * Redraws the coloured fill path and repositions the thumb
+   * according to the current volume value.
+   */
+  function renderWave() {
+    const pct = Math.min(Math.max(volume, 0), 1); // clamp 0–1 for visuals
+
+    // Pick colour based on pressure level
+    const color = volume > 1.0 ? '#e84040'
+                : volume > 0.7 ? '#f0a030'
+                : '#4f8ef7';
+
+    // Redraw the filled portion of the wave
+    waveFill.setAttribute('d', buildWavePath(pct));
+    waveFill.setAttribute('stroke', color);
+
+    // Move the thumb: X is linear, Y follows the sine curve
+    const rect   = waveContainer.getBoundingClientRect();
+    const domW   = rect.width  || SVG_W;
+    const domH   = rect.height || SVG_H;
+    const thumbX = pct * domW;
+    const thumbY = (waveY(pct) / SVG_H) * domH;
+
+    waveThumb.style.left       = thumbX + 'px';
+    waveThumb.style.top        = thumbY + 'px';
+    waveThumb.style.background = color;
+    waveThumb.style.boxShadow  = '0 0 0 1px ' + color;
+
+    // Update pressure badge and pipe bar
+    const pctInt = Math.round(volume * 100);
+    pressureBadge.textContent       = pctInt + '%';
+    pressureBadge.style.color       = color;
+    pressureBadge.style.borderColor = color;
+    pipeFill.style.width            = Math.min(pctInt, 110) + '%';
+    pipeFill.style.background       = color;
+  }
+
+  /* ============================================================
+   *  WEB AUDIO API — setup
+   * ============================================================ */
+
+  /**
+   * Initialises the AudioContext and node graph.
+   * Must be called from a user gesture (browser autoplay policy).
+   * Safe to call multiple times — exits immediately if already set up.
+   */
+  function initAudioContext() {
+    if (audioCtx) return;
+
+    audioCtx   = new (window.AudioContext || window.webkitAudioContext)();
+    gainNode   = audioCtx.createGain();
+    shaperNode = audioCtx.createWaveShaper();
+
+    // Start with a flat (identity) distortion curve — no effect
+    shaperNode.curve      = makeDistortionCurve(0);
+    shaperNode.oversample = '4x'; // reduces aliasing artifacts
+
+    // MediaElementSource wraps the <audio> element
+    srcNode = audioCtx.createMediaElementSource(audio);
+
+    // Connect: source → gain → shaper → speakers
+    srcNode.connect(gainNode);
+    gainNode.connect(shaperNode);
+    shaperNode.connect(audioCtx.destination);
+
+    gainNode.gain.value = volume;
+  }
+
+  /**
+   * Generates a WaveShaperNode distortion curve.
+   *
+   * amount = 0   → identity (linear, no distortion)
+   * amount = 400 → heavy soft-clipping distortion (burst effect)
+   *
+   * Algorithm: f(x) = (π + k) * x / (π + k|x|)
+   * As k increases the curve approaches a hard square-wave clip.
+   */
+  function makeDistortionCurve(amount) {
+    const n     = 256;
+    const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x  = (i * 2) / n - 1; // map i → [-1, +1]
+      curve[i] = (amount === 0)
+        ? x
+        : ((Math.PI + amount) * x) / (Math.PI + amount * Math.abs(x));
+    }
+    return curve;
+  }
+
+  /** Sets the volume state and updates the GainNode and wave UI. */
+  function setVolume(v) {
+    volume = Math.min(Math.max(v, 0), 1.1); // hard cap at 110%
+    if (gainNode) gainNode.gain.value = isMuted ? 0 : volume;
+    renderWave();
+  }
+
+  /* ============================================================
+   *  HYDRAULIC LEAK MECHANIC
+   * ============================================================ */
+
+  /** Begins the leak: subtracts 2% from volume every 50 ms. */
+  function startLeak() {
+    if (leakInterval) return; // already running
+    leakInterval = setInterval(function () {
+      if (!isPlaying || isPenalty) return;
+      setVolume(volume - 0.02);
+      updateStatus();
+    }, 50);
+  }
+
+  /** Cancels the leak interval. */
+  function stopLeak() {
+    if (leakInterval) { clearInterval(leakInterval); leakInterval = null; }
+  }
+
+  /**
+   * BURST — triggered when volume exceeds 105%.
+   *
+   * Phase 1 (0 – 1.5 s):
+   *   Apply heavy distortion, spike gain to 110%.
+   *
+   * Phase 2 (1.5 s – 6.5 s):
+   *   Clear distortion, crash volume to 0%,
+   *   run 5-second countdown before re-enabling pump.
+   */
+  function triggerBurst() {
+    if (isBurst || isPenalty) return;
+    isBurst   = true;
+    isPenalty = true;
+    pumpBtn.disabled = true;
+
+    // Load harsh distortion curve into WaveShaperNode
+    if (shaperNode) shaperNode.curve = makeDistortionCurve(400);
+    setVolume(1.1);
+
+    statusBar.textContent = '\uD83D\uDCA5 PIPE BURST! Distortion active for 1.5s\u2026';
+    statusBar.className   = 'danger';
+
+    setTimeout(function () {
+      // Clear distortion and crash
+      if (shaperNode) shaperNode.curve = makeDistortionCurve(0);
+      setVolume(0);
+      isBurst = false;
+
+      // 5-second penalty countdown
+      var secs = 5;
+      statusBar.textContent = '\uD83D\uDD34 System offline \u2014 cooling down (' + secs + 's)';
+      statusBar.className   = 'danger';
+
+      var countdown = setInterval(function () {
+        secs--;
+        if (secs > 0) {
+          statusBar.textContent = '\uD83D\uDD34 System offline \u2014 cooling down (' + secs + 's)';
+        } else {
+          clearInterval(countdown);
+          isPenalty        = false;
+          pumpBtn.disabled = false;
+          updateStatus();
+        }
+      }, 1000);
+
+    }, 1500);
+  }
+
+  /* ============================================================
+   *  STATUS BAR
+   * ============================================================ */
+
+  function updateStatus() {
+    if (isPenalty) return; // penalty messages set by triggerBurst
+
+    if (!isPlaying) {
+      statusBar.textContent = 'Press play to activate the hydraulic system.';
+      statusBar.className   = '';
+      return;
+    }
+
+    var pct = Math.round(volume * 100);
+
+    if (pct <= 0) {
+      statusBar.textContent = '\uD83D\uDD07 No pressure \u2014 pump to restore audio!';
+      statusBar.className   = 'danger';
+    } else if (pct < 25) {
+      statusBar.textContent = '\u26A0\uFE0F Critical pressure (' + pct + '%) \u2014 pump fast!';
+      statusBar.className   = 'warn';
+    } else if (pct < 55) {
+      statusBar.textContent = '\uD83D\uDFE1 Low pressure (' + pct + '%) \u2014 keep pumping.';
+      statusBar.className   = 'warn';
+    } else if (pct < 100) {
+      statusBar.textContent = '\u2705 Pressure stable (' + pct + '%) \u2014 maintain it!';
+      statusBar.className   = 'ok';
+    } else {
+      statusBar.textContent = '\u26A0\uFE0F OVERPRESSURE (' + pct + '%) \u2014 ease off or it BURSTS!';
+      statusBar.className   = 'warn';
+    }
+  }
+
+  /* ============================================================
+   *  FILE LOADING
+   * ============================================================ */
+
+  function loadFile(file) {
+    if (!file || !file.type.startsWith('audio/')) {
+      alert('Please select a valid audio file (MP3, WAV, OGG, FLAC, AAC).');
+      return;
+    }
+
+    // Free any previous object URL
+    if (audio.src && audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+
+    audio.src = URL.createObjectURL(file);
+    audio.load();
+
+    var name = file.name.replace(/\.[^.]+$/, ''); // strip file extension
+    trackName.textContent  = name;
+    trackState.textContent = 'Ready \u2014 press play';
+
+    uploadZone.innerHTML =
+      '<div class="icon">&#127925;</div>' +
+      '<div style="font-weight:600">' + name + '</div>' +
+      '<div style="font-size:0.7rem;margin-top:0.3rem">Click to change file</div>';
+
+    playerPanel.style.display    = 'block';
+    hydraulicPanel.style.display = 'block';
+    playBtn.disabled = false;
+
+    // Reset all state for the new track
+    stopLeak();
+    isPlaying = false;
+    isPenalty = false;
+    isBurst   = false;
+    isMuted   = false;
+    muteBtn.classList.remove('muted');
+    muteBtn.textContent = '\uD83D\uDD0A Mute';
+    pumpBtn.disabled    = true;
+    playBtn.innerHTML   = '&#9654;';
+    loopBtn.classList.remove('active');
+    audio.loop = false;
+    seekSlider.value      = 0;
+    curTimeEl.textContent = '0:00';
+    durTimeEl.textContent = '0:00';
+    speedSelect.value     = '1';
+    audio.playbackRate    = 1;
+
+    setVolume(0.5);
+    updateStatus();
+  }
+
+  /* ============================================================
+   *  PLAYBACK CONTROLS
+   * ============================================================ */
+
+  function togglePlay() {
+    if (!audio.src) return;
+
+    // AudioContext must be created (or resumed) by a user gesture
+    initAudioContext();
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+
+    if (isPlaying) {
+      audio.pause();
+      isPlaying              = false;
+      playBtn.innerHTML      = '&#9654;';
+      trackState.textContent = 'Paused';
+      stopLeak();
+      updateStatus();
+    } else {
+      audio.play();
+      isPlaying              = true;
+      playBtn.innerHTML      = '&#9646;&#9646;';
+      trackState.textContent = 'Playing';
+      pumpBtn.disabled       = false;
+      startLeak();
+      updateStatus();
+    }
+  }
+
+  playBtn.addEventListener('click', togglePlay);
+
+  backBtn.addEventListener('click', function () {
+    audio.currentTime = Math.max(0, audio.currentTime - 10);
+  });
+
+  fwdBtn.addEventListener('click', function () {
+    audio.currentTime = Math.min(audio.duration || 0, audio.currentTime + 10);
+  });
+
+  speedSelect.addEventListener('change', function () {
+    audio.playbackRate = parseFloat(speedSelect.value);
+  });
+
+  loopBtn.addEventListener('click', function () {
+    audio.loop = !audio.loop;
+    loopBtn.classList.toggle('active', audio.loop);
+  });
+
+  muteBtn.addEventListener('click', function () {
+    isMuted = !isMuted;
+    if (isMuted) {
+      if (gainNode) gainNode.gain.value = 0;
+      muteBtn.textContent = '\uD83D\uDD07 Unmute';
+      muteBtn.classList.add('muted');
+    } else {
+      if (gainNode) gainNode.gain.value = volume;
+      muteBtn.textContent = '\uD83D\uDD0A Mute';
+      muteBtn.classList.remove('muted');
+    }
+  });
+
+  /* ── Seek slider ──────────────────────────────────────── */
+  seekSlider.addEventListener('mousedown',  function () { isSeeking = true; });
+  seekSlider.addEventListener('touchstart', function () { isSeeking = true; }, { passive: true });
+
+  // Show updated time while dragging
+  seekSlider.addEventListener('input', function () {
+    if (audio.duration) {
+      curTimeEl.textContent = formatTime((seekSlider.value / 100) * audio.duration);
+    }
+  });
+
+  // Commit the seek on release
+  seekSlider.addEventListener('change', function () {
+    if (audio.duration) audio.currentTime = (seekSlider.value / 100) * audio.duration;
+    isSeeking = false;
+  });
+
+  audio.addEventListener('timeupdate', function () {
+    if (isSeeking || !audio.duration) return;
+    seekSlider.value      = (audio.currentTime / audio.duration) * 100;
+    curTimeEl.textContent = formatTime(audio.currentTime);
+  });
+
+  audio.addEventListener('durationchange', function () {
+    durTimeEl.textContent = formatTime(audio.duration);
+  });
+
+  audio.addEventListener('ended', function () {
+    if (!audio.loop) {
+      isPlaying              = false;
+      playBtn.innerHTML      = '&#9654;';
+      trackState.textContent = 'Finished';
+      stopLeak();
+      updateStatus();
+    }
+  });
+
+  /* ============================================================
+   *  PUMP BUTTON
+   * ============================================================ */
+
+  pumpBtn.addEventListener('click', function () {
+    if (isPenalty || !isPlaying) return;
+
+    var next = volume + 0.08; // +8% per click
+
+    if (next > 1.05) {
+      triggerBurst();
+      return;
+    }
+
+    setVolume(next);
+    updateStatus();
+
+    // Quick visual flash feedback
+    pumpBtn.classList.add('pumped');
+    setTimeout(function () { pumpBtn.classList.remove('pumped'); }, 100);
+  });
+
+  /* ============================================================
+   *  WAVE SLIDER — drag & tap
+   * ============================================================ */
+
+  /** Converts a pointer's clientX into a 0–1 normalised volume. */
+  function clientXToVolume(clientX) {
+    var rect = waveContainer.getBoundingClientRect();
+    return Math.min(Math.max((clientX - rect.left) / rect.width, 0), 1);
+  }
+
+  waveContainer.addEventListener('mousedown', function (e) {
+    isDraggingWave = true;
+    setVolume(clientXToVolume(e.clientX));
+    updateStatus();
+  });
+
+  waveContainer.addEventListener('touchstart', function (e) {
+    isDraggingWave = true;
+    setVolume(clientXToVolume(e.touches[0].clientX));
+    updateStatus();
+  }, { passive: true });
+
+  document.addEventListener('mousemove', function (e) {
+    if (!isDraggingWave) return;
+    setVolume(clientXToVolume(e.clientX));
+    updateStatus();
+  });
+
+  document.addEventListener('touchmove', function (e) {
+    if (!isDraggingWave) return;
+    setVolume(clientXToVolume(e.touches[0].clientX));
+    updateStatus();
+  }, { passive: true });
+
+  document.addEventListener('mouseup',  function () { isDraggingWave = false; });
+  document.addEventListener('touchend', function () { isDraggingWave = false; });
+
+  /* ============================================================
+   *  KEYBOARD CONTROLS
+   *  Space → play/pause
+   *  P     → pump
+   *  ← →   → skip ±10 seconds
+   *  M     → mute/unmute
+   * ============================================================ */
+
+  document.addEventListener('keydown', function (e) {
+    // Don't intercept typing in form elements
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+
+    switch (e.key) {
+      case ' ':
+        e.preventDefault();
+        if (audio.src) togglePlay();
+        break;
+      case 'p':
+      case 'P':
+        if (!pumpBtn.disabled) pumpBtn.click();
+        break;
+      case 'ArrowLeft':
+        e.preventDefault();
+        backBtn.click();
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        fwdBtn.click();
+        break;
+      case 'm':
+      case 'M':
+        muteBtn.click();
+        break;
+    }
+  });
+
+  /* ============================================================
+   *  FILE INPUT — click + drag-and-drop
+   * ============================================================ */
+
+  uploadZone.addEventListener('click', function () { fileInput.click(); });
+
+  fileInput.addEventListener('change', function () {
+    if (fileInput.files[0]) loadFile(fileInput.files[0]);
+  });
+
+  uploadZone.addEventListener('dragover', function (e) {
+    e.preventDefault();
+    uploadZone.classList.add('drag-over');
+  });
+
+  uploadZone.addEventListener('dragleave', function () {
+    uploadZone.classList.remove('drag-over');
+  });
+
+  uploadZone.addEventListener('drop', function (e) {
+    e.preventDefault();
+    uploadZone.classList.remove('drag-over');
+    if (e.dataTransfer.files[0]) loadFile(e.dataTransfer.files[0]);
+  });
+
+  /* ============================================================
+   *  UTILITIES
+   * ============================================================ */
+
+  /** Converts a duration in seconds to M:SS string. */
+  function formatTime(s) {
+    if (!isFinite(s) || isNaN(s)) return '0:00';
+    var m   = Math.floor(s / 60);
+    var sec = Math.floor(s % 60);
+    return m + ':' + (sec < 10 ? '0' : '') + sec;
+  }
+
+  // Initial render — draw wave at 50% volume
+  renderWave();
+
+})();
+</script>
+</body>
+</html>
